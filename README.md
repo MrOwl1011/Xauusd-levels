@@ -42,6 +42,7 @@
 - 🔁 **Level-bounce entries**: waits for price to cross a level, then trades the pullback on the next candle.
 - 🎛️ **Every rule is a switch**: ADX, DI direction, SMA, ratio and session filters can each be turned on or off in the inputs.
 - 💰 **Risk levels**: six lot-size presets, from Low to Super High, with an optional dynamic lot size.
+- 🛡️ **Break-even**: moves the stop loss to the entry price once a trade is in profit.
 - 🧹 **Clean chart**: main lines in sky blue, minor lines in gold, and a thicker base line.
 
 ---
@@ -110,15 +111,15 @@ So every main level ends in **.6** with a 3 before it (`3213.6`, `3223.6`, `3233
 
 ## 🎚️ Entry filters
 
-A trade opens only when **every filter you left ON agrees**. Turn them all OFF and every level touch becomes a trade.
+A trade opens only when **every filter you left ON agrees**. Defaults match the `d.set` preset. Turn them all OFF and every level touch becomes a trade.
 
 | Filter | Input | What it checks | Default |
 |---|---|---|---|
 | **ADX strength** | `UseADXFilter` | ADX is above `ADXMinLevel` (a strong trend) | ON · 30 |
-| **DI direction** | `UseDIFilter` | +DI/−DI agree with the trade (+DI above −DI for buys) | ON |
+| **DI direction** | `UseDIFilter` | +DI/−DI agree with the trade (+DI above −DI for buys) | OFF |
 | **SMA trend** | `UseSMAFilter` | Price is above both M1 SMAs for buys, below both for sells | ON · 45 / 150 |
-| **Good ratio** | `UseRatioFilter` | The close is within about $0.20 of the level | ON · 4.8 |
-| **Session** | `UseSessionFilter` | Only trade in the session windows (server time) | ON · 11–17 and 2–5 |
+| **Good ratio** | `UseRatioFilter` | The close is within about $0.20 of the level | ON · 4.5 |
+| **Session** | `UseSessionFilter` | Only trade in the session windows (server time) | OFF · 4–7 and 10–3 |
 
 ---
 
@@ -129,7 +130,7 @@ A trade opens only when **every filter you left ON agrees**. Turn them all OFF a
 | Input | Meaning |
 |---|---|
 | `UseDynamicLotSize` | Recalculate the lot from current equity for every trade |
-| `RiskLevel` | Low · Medium Low · Medium · Medium High · High · Super High |
+| `RiskLevel` | Low (default) · Medium Low · Medium · Medium High · High · Super High |
 
 Lot size is **account equity × a factor**:
 
@@ -142,11 +143,21 @@ Lot size is **account equity × a factor**:
 | High | 0.001 |
 | Super High | 0.0015 (fixed) / 0.003 (dynamic) |
 
-> ⚠️ These factors are large. For example, $10,000 equity at **Medium** gives **5.00 lots**. Check the lot size on a demo account before going live.
+> ⚠️ These factors are large. For example, $10,000 equity at **Low** (the default) gives **1.00 lot**, and at **Medium** gives **5.00 lots**. Check the lot size on a demo account before going live.
+
+### Break-even
+
+| Input | Default | Meaning |
+|---|---|---|
+| `UseBreakEven` | ON | Move the stop loss to break-even once a trade is in profit |
+| `BreakEvenTrigger` | 0.5 | Profit, in dollars of price move, that triggers it |
+| `BreakEvenOffset` | 0.15 | The new SL sits this many dollars past the open price, which covers costs |
+
+Example: a buy opened at 3250.00 reaches 3250.50, so the SL moves to 3250.15. The SL only ever moves in your favor and the take profit is kept.
 
 ### Filters
 
-`UseADXFilter` · `ADXPeriod` (14) · `ADXMinLevel` (30) · `UseDIFilter` · `UseSMAFilter` · `FastSMAPeriod` (45) · `SlowSMAPeriod` (150) · `UseRatioFilter` · `GoodRatioInput` (4.8) · `UseSessionFilter` · `Session1StartHour` (11) · `Session1EndHour` (17) · `Session2StartHour` (2) · `Session2EndHour` (5)
+`UseADXFilter` · `ADXPeriod` (14) · `ADXMinLevel` (30) · `UseDIFilter` (off) · `UseSMAFilter` · `FastSMAPeriod` (45) · `SlowSMAPeriod` (150) · `UseRatioFilter` · `GoodRatioInput` (4.5) · `UseSessionFilter` (off) · `Session1StartHour` (4) · `Session1EndHour` (7) · `Session2StartHour` (10) · `Session2EndHour` (3)
 
 ### Fixed in code (edit the `.mq5` to change)
 
@@ -178,9 +189,8 @@ Lot size is **account equity × a factor**:
 |---|---|
 | `Gold Bar.mq5` | The current EA |
 | `docs/screenshot.png` | Chart preview shown in this README |
+| `d.set` | Preset with the default input values. In MT5 click **Load** in the Inputs tab to use it. |
 | `LICENSE` | MIT license |
-| `Gold V15.mq5`, `V15.1`, `V15.5`, `V15.6`, `V15.7` | Older versions, kept for reference |
-| `*.ex5` | Compiled builds produced by MetaEditor |
 
 ---
 
@@ -189,7 +199,7 @@ Lot size is **account equity × a factor**:
 - **No cap on open trades.** Several trades can open on the same level.
 - **No spread or slippage check** before sending an order.
 - **Trailing stop rarely fires.** It starts at 5000 points ($50 on gold), the same distance as the take profit.
-- **Session hours use broker server time**, not GMT.
+- **Session hours use broker server time**, not GMT. A window whose end is before its start, like 10 → 3, wraps past midnight.
 - **The base level uses last week's open**, not the current week's.
 - **Fixed lot sizes are computed once** when the EA loads, so they don't follow equity changes. Use `UseDynamicLotSize` if you want that.
 

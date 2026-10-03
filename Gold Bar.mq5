@@ -26,24 +26,38 @@ enum ENUM_RISK_LEVEL
    RISK_HIGH,       // High Risk
    RISK_SUPER_HIGH,    // Super High Risk
 };
-input ENUM_RISK_LEVEL RiskLevel = RISK_MEDIUM;               // Risk Level
+input ENUM_RISK_LEVEL RiskLevel = RISK_LOW;                  // Risk Level
+
+//=======================BREAK EVEN==============================================//
+input group "Break Even Settings"
+input bool   UseBreakEven     = true;   // Move SL to break-even
+input double BreakEvenTrigger = 0.5;    // Profit ($ price move) that triggers break-even
+input double BreakEvenOffset  = 0.15;   // SL placed this many $ beyond the open price
 
 //=======================ENTRY FILTERS==============================================//
-input group "Entry Filters (turn each rule on/off)"
-input bool UseADXFilter     = true;    // ADX strength filter
+input group "Filter 1: ADX Strength"
+input bool UseADXFilter     = true;    // Use ADX strength filter
 input int  ADXPeriod        = 14;      // ADX period
 input double ADXMinLevel    = 30.0;    // ADX must be above this
-input bool UseDIFilter      = true;    // +DI/-DI direction filter
-input bool UseSMAFilter     = true;    // Price vs SMA filter (M1)
+
+input group "Filter 2: DI Direction"
+input bool UseDIFilter      = false;   // Use +DI/-DI direction filter
+
+input group "Filter 3: SMA Trend (M1)"
+input bool UseSMAFilter     = true;    // Use price vs SMA filter
 input int  FastSMAPeriod    = 45;      // Fast SMA period
 input int  SlowSMAPeriod    = 150;     // Slow SMA period
-input bool UseRatioFilter   = true;    // Good-ratio filter (close near level)
-input double GoodRatioInput = 4.8;     // Good ratio value
-input bool UseSessionFilter = true;    // Trading session filter
-input int  Session1StartHour = 11;     // Session 1 start (server hour)
-input int  Session1EndHour   = 17;     // Session 1 end (server hour)
-input int  Session2StartHour = 2;      // Session 2 start (server hour)
-input int  Session2EndHour   = 5;      // Session 2 end (server hour)
+
+input group "Filter 4: Good Ratio"
+input bool UseRatioFilter   = true;    // Use good-ratio filter (close near level)
+input double GoodRatioInput = 4.5;     // Good ratio value
+
+input group "Filter 5: Trading Session (server time)"
+input bool UseSessionFilter = false;   // Use trading session filter
+input int  Session1StartHour = 4;      // Session 1 start hour
+input int  Session1EndHour   = 7;      // Session 1 end hour
+input int  Session2StartHour = 10;     // Session 2 start hour
+input int  Session2EndHour   = 3;      // Session 2 end hour
 
 //=======================COLORS==============================================//
 #define NEON_PINK       C'255,20,147'    // Deep Pink (Hot Neon)  
@@ -289,7 +303,7 @@ void OnTick()
 
       signalTriggered = false;
    }
-  // CheckBreakEven();
+   CheckBreakEven();
    TrailingStop();
    
 
@@ -400,6 +414,45 @@ bool SellSma()
 }
 
 //+------------------------------------------------------------------+
+//| Break-even: once profit reaches BreakEvenTrigger (in dollars),   |
+//| move the SL to the open price + BreakEvenOffset                  |
+//+------------------------------------------------------------------+
+void CheckBreakEven()
+{
+    if(!UseBreakEven)
+        return;
+
+    for(int i = PositionsTotal()-1; i >= 0; i--)
+    {
+        ulong ticket = PositionGetTicket(i);
+        if(!PositionSelectByTicket(ticket) || PositionGetString(POSITION_SYMBOL) != _Symbol)
+            continue;
+
+        bool isBuy       = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+        double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+        double currentSl = PositionGetDouble(POSITION_SL);
+        double currentTp = PositionGetDouble(POSITION_TP);
+        double price     = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
+                                 : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+
+        double profit = isBuy ? price - openPrice : openPrice - price;
+        if(profit < BreakEvenTrigger)
+            continue;
+
+        double newSl = NormalizeDouble(isBuy ? openPrice + BreakEvenOffset
+                                             : openPrice - BreakEvenOffset, _Digits);
+
+        // Only move the SL if it improves the current one (or none is set)
+        bool better = (currentSl == 0.0) || (isBuy ? newSl > currentSl : newSl < currentSl);
+        if(!better)
+            continue;
+
+        if(!trade.PositionModify(ticket, newSl, currentTp))
+            Print("Failed to set break-even for #", ticket, " Error:", GetLastError());
+    }
+}
+
+//+------------------------------------------------------------------+
 //| Trailing Stop Logic (Modified to work with break-even)           |
 //+------------------------------------------------------------------+
 void TrailingStop()
@@ -442,6 +495,16 @@ void TrailingStop()
     }
 }
 
+// True if hour is inside [start, end); a window like 10 -> 3 wraps past midnight
+bool InHourWindow(int hour, int start, int end)
+{
+    if(start == end)
+        return false;
+    if(start < end)
+        return (hour >= start && hour < end);
+    return (hour >= start || hour < end);
+}
+
 //-------------------------------------------------------
 //             Trading Sessions                          |
 //-------------------------------------------------------
@@ -454,9 +517,9 @@ bool IsGoodTradingSession()
     MqlDateTime timeNow;
     TimeCurrent(timeNow);
 
-    if(timeNow.hour >= Session1StartHour && timeNow.hour < Session1EndHour)
+    if(InHourWindow(timeNow.hour, Session1StartHour, Session1EndHour))
         return true;
-    if(timeNow.hour >= Session2StartHour && timeNow.hour < Session2EndHour)
+    if(InHourWindow(timeNow.hour, Session2StartHour, Session2EndHour))
         return true;
 
         
